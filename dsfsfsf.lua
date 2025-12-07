@@ -14,6 +14,7 @@ _G.SpeedEnabled = false
 _G.SpeedValue = 1
 _G.AutoRaceAbility = false
 _G.AutoV4 = false
+_G.AntiStun = false
 
 local lockedTarget = nil
 local lastTargetPos = nil
@@ -68,13 +69,12 @@ local function findNearestTarget()
             local root = player.Character:FindFirstChild("HumanoidRootPart")
             local hum = player.Character:FindFirstChild("Humanoid")
             
-            if root and hum and hum.Health > 0 and player.UserId > 0 and not isAlly(player) then
+            -- ตรวจสอบ: ไม่ใช่ NPC, มี HP, ไม่ใช่ Ally เท่านั้น
+            if root and hum and hum.Health > 0 and player.UserId > 0 and not isAlly(player) and player.Parent == Players then
                 local dist = (HumanoidRootPart.Position - root.Position).Magnitude
                 if dist < shortestDist then
-                    if player.Parent == Players then
-                        shortestDist = dist
-                        nearestPlayer = player
-                    end
+                    shortestDist = dist
+                    nearestPlayer = player
                 end
             end
         end
@@ -247,8 +247,14 @@ local function CreateESP(player)
     if player == LocalPlayer then return end
     
     -- เช็คว่าผู้เล่นมีทีมหรือไม่ ถ้าไม่มีทีมไม่แสดง ESP
-    if not player.Team or not IsPirateTeam(player) and not IsMarineTeam(player) then
+    if not player.Team or (not IsPirateTeam(player) and not IsMarineTeam(player)) then
         return
+    end
+    
+    -- เช็คว่า ESP มีอยู่แล้วหรือไม่
+    local existingESP = ESPFolder:FindFirstChild("ESP_" .. player.Name)
+    if existingESP then
+        existingESP:Destroy()
     end
     
     local ESPBox = Instance.new("BillboardGui")
@@ -649,6 +655,10 @@ createToggleButton("Auto V4", "⭐", function(enabled)
     _G.AutoV4 = enabled
 end)
 
+createToggleButton("Anti-Stun", "🛡️", function(enabled)
+    _G.AntiStun = enabled
+end)
+
 local JumpButton = Instance.new("TextButton")
 JumpButton.Name = "JumpButton"
 JumpButton.Size = UDim2.new(0, 85, 0, 85)
@@ -887,9 +897,26 @@ spawn(function()
     end
 end)
 
+-- Anti-Stun Loop
+spawn(function()
+    while wait(0.01) do
+        if _G.AntiStun then
+            pcall(function()
+                local Character = LocalPlayer.Character
+                if Character then
+                    local Stun = Character:FindFirstChild("Stun")
+                    if Stun then
+                        Stun.Value = 0
+                    end
+                end
+            end)
+        end
+    end
+end)
+
 Players.PlayerAdded:Connect(function(player)
+    wait(1)
     if _G.ESPEnabled then
-        wait(1)
         CreateESP(player)
     end
 end)
@@ -900,6 +927,22 @@ Players.PlayerRemoving:Connect(function(player)
         esp:Destroy()
     end
 end)
+
+-- อัปเดต ESP เมื่อผู้เล่นเปลี่ยนทีม
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        player:GetPropertyChangedSignal("Team"):Connect(function()
+            if _G.ESPEnabled then
+                local esp = ESPFolder:FindFirstChild("ESP_" .. player.Name)
+                if esp then
+                    esp:Destroy()
+                end
+                wait(0.1)
+                CreateESP(player)
+            end
+        end)
+    end
+end
 
 UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
@@ -916,10 +959,3 @@ Credit.Font = Enum.Font.GothamBold
 Credit.TextStrokeTransparency = 0.3
 Credit.Parent = ScreenGui
 
-print("🧅 Onion13 Hub - Ultra Precise Version!")
-print("✅ ESP แสดงเฉพาะคนที่มีทีม (Pirate/Marine)")
-print("🎯 Aimbot ล็อคคนที่ใกล้ที่สุดเสมอ - อัปเดตทุก 0.02 วินาที!")
-print("📏 ระยะใกล้ (0-100m) = 1% Prediction")
-print("📏 ระยะกลาง (100-350m) = 2-3% Prediction")
-print("📏 ระยะไกล (350-500m+) = 4-5% Prediction")
-print("⚡ สลับเป้าหมายอัตโนมัติ - ล็อคคนใกล้สุดเสมอ!")
